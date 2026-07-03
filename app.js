@@ -28,8 +28,15 @@ const CFG = {
     'https://postman-echo.com/post',
   ],
   DNS_URL:  'https://dns.google/resolve?name=google.com&type=A',
-  IP_URL:   'https://ipwho.is/',
-  IP_FALLBACK: 'https://ip-api.com/json?fields=status,country,regionName,city,isp,org,query',
+  /* IP APIs — tried in order, first success wins
+     1. ipinfo.io   — most accurate ISP/ASN globally (uses Probe Network)
+     2. ipapi.co    — good city accuracy, free 1k/day
+     3. ip-api.com  — reliable fallback                              */
+  IP_APIS: [
+    { url: 'https://ipinfo.io/json',                                            fmt: 'ipinfo'  },
+    { url: 'https://ipapi.co/json/',                                            fmt: 'ipapiCo' },
+    { url: 'https://ip-api.com/json?fields=status,country,regionName,city,isp,org,as,query', fmt: 'ipapi'   },
+  ],
 
   DL_BYTES: 25 * 1024 * 1024,   // 25 MB
   UL_BYTES:  2 * 1024 * 1024,   //  2 MB
@@ -431,54 +438,112 @@ async function measureDNS() {
 }
 
 async function fetchUserInfo() {
-  /* ── Primary: ipwho.is (detailed, free, no key) ── */
-  try {
-    const r    = await fetchTO(CFG.IP_URL, {}, 10_000);
-    const data = await r.json();
-    if (data.success !== false && data.ip) {
-      S.info = {
-        query:      data.ip,
-        isp:        data.connection?.isp  || data.connection?.org || '—',
-        org:        data.connection?.org  || '—',
-        asn:        data.connection?.asn  ? 'AS' + data.connection.asn : '—',
-        domain:     data.connection?.domain || '',
-        city:       data.city     || '—',
-        regionName: data.region   || '—',
-        country:    data.country  || '—',
-        countryCode: data.country_code || '',
-        flag:       data.flag?.emoji || '',
-        timezone:   data.timezone?.id  || '—',
-        utc:        data.timezone?.utc || '',
-        lat:        data.latitude,
-        lon:        data.longitude,
-      };
-      paintInfoBar();
-      return;
+  for (const api of CFG.IP_APIS) {
+    try {
+      const r    = await fetchTO(api.url, {}, 10_000);
+      const d    = await r.json();
+      const info = parseIPResponse(d, api.fmt);
+      if (info) {
+        S.info = info;
+        paintInfoBar();
+        console.log('[ip] resolved via', api.fmt, info);
+        return;
+      }
+    } catch (e) {
+      console.warn('[ip]', api.fmt, 'failed:', e.message);
     }
-  } catch (e) {
-    console.warn('[ip] ipwho.is failed:', e.message);
+  }
+  console.error('[ip] all APIs failed');
+}
+
+/**
+ * Normalise each API’s response into a common object.
+ * Returns null if the response looks invalid.
+ */
+function parseIPResponse(d, fmt) {
+  if (!d) return null;
+
+  if (fmt === 'ipinfo') {
+    /* ipinfo.io: org = "AS39386 Saudi Telecom Company" */
+    if (!d.ip) return null;
+    const orgRaw = d.org || '';
+    const asnMatch = orgRaw.match(/^(AS\d+)\s*(.*)$/);
+    return {
+      query:       d.ip,
+      isp:         asnMatch ? asnMatch[2].trim() : orgRaw || '—',
+      org:         orgRaw,
+      asn:         asnMatch ? asnMatch[1] : '—',
+      city:        d.city       || '—',
+      regionName:  d.region     || '—',
+      country:     countryName(d.country) || d.country || '—',
+      countryCode: d.country    || '',
+      timezone:    d.timezone   || '—',
+      utc:         tzToUTC(d.timezone),
+      source:      'ipinfo.io',
+    };
   }
 
-  /* ── Fallback: ip-api.com ── */
-  try {
-    const r    = await fetchTO(CFG.IP_FALLBACK, {}, 10_000);
-    const data = await r.json();
-    if (data.status === 'success' || data.query) {
-      S.info = {
-        query:      data.query,
-        isp:        data.isp   || '—',
-        org:        data.org   || '—',
-        asn:        '—',
-        city:       data.city       || '—',
-        regionName: data.regionName || '—',
-        country:    data.country    || '—',
-        flag: '', timezone: '—', utc: '',
-      };
-      paintInfoBar();
-    }
-  } catch (e) {
-    console.warn('[ip] ip-api.com also failed:', e.message);
+  if (fmt === 'ipapiCo') {
+    /* ipapi.co: separate asn and org fields */
+    if (!d.ip || d.error) return null;
+    return {
+      query:       d.ip,
+      isp:         d.org        || d.asn || '—',
+      org:         d.org        || '—',
+      asn:         d.asn        || '—',
+      city:        d.city       || '—',
+      regionName:  d.region     || '—',
+      country:     d.country_name || countryName(d.country_code) || '—',
+      countryCode: d.country_code || '',
+      timezone:    d.timezone   || '—',
+      utc:         d.utc_offset || '',
+      source:      'ipapi.co',
+    };
   }
+
+  if (fmt === 'ipapi') {
+    /* ip-api.com: isp and as fields */
+    if (d.status !== 'success' && !d.query) return null;
+    return {
+      query:       d.query,
+      isp:         d.isp        || d.org || '—',
+      org:         d.org        || '—',
+      asn:         d.as ? d.as.split(' ')[0] : '—',
+      city:        d.city       || '—',
+      regionName:  d.regionName || '—',
+      country:     d.country    || '—',
+      countryCode: d.countryCode || '',
+      timezone:    '—',
+      utc:         '',
+      source:      'ip-api.com',
+    };
+  }
+
+  return null;
+}
+
+/** Best-effort country code → name (covers the most common codes) */
+function countryName(cc) {
+  const MAP = {
+    SA:'Saudi Arabia', AE:'UAE', KW:'Kuwait', QA:'Qatar', BH:'Bahrain',
+    OM:'Oman', JO:'Jordan', IQ:'Iraq', EG:'Egypt', LB:'Lebanon',
+    YE:'Yemen', SY:'Syria', PS:'Palestine',
+    US:'United States', GB:'United Kingdom', DE:'Germany', FR:'France',
+    IN:'India', PK:'Pakistan', CN:'China', JP:'Japan', SG:'Singapore',
+    TR:'Turkey', RU:'Russia', NG:'Nigeria', ZA:'South Africa',
+  };
+  return MAP[cc] || cc;
+}
+
+/** IANA timezone → UTC offset string (approximate, good enough for display) */
+function tzToUTC(tz) {
+  if (!tz) return '';
+  try {
+    const fmt = new Intl.DateTimeFormat('en', { timeZone: tz, timeZoneName: 'short' });
+    const parts = fmt.formatToParts(new Date());
+    const gmt = parts.find(p => p.type === 'timeZoneName');
+    return gmt ? gmt.value : '';
+  } catch { return ''; }
 }
 
 function pruneOld() {
@@ -524,7 +589,6 @@ function paintInfoBar() {
   const ipEl = qs('val-ip');
   if (ipEl && i.query) {
     ipEl.dataset.ip = i.query;
-    /* Only update display if currently hidden (not revealed by user) */
     if (!ipEl.dataset.revealed) {
       ipEl.textContent = '••••••••••';
     } else {
@@ -532,19 +596,28 @@ function paintInfoBar() {
     }
   }
 
-  setText('val-isp',      i.isp || '—');
-  setText('val-location', [i.city, i.country].filter(v => v && v !== '—').join(', ') || '—');
-  setText('val-asn',      i.asn || '—');
+  /* ISP — if isp === org, show just one; else "ISP (Org)" */
+  const ispLabel = (i.isp && i.org && i.isp !== i.org && !i.org.startsWith('AS'))
+    ? `${i.isp}`
+    : (i.isp || '—');
+  setText('val-isp', ispLabel);
 
-  /* Test server label: pick nearest known Google DC based on country code */
-  const region = i.regionName || i.country || '';
+  /* Location: City, Country */
+  setText('val-location', [i.city, i.country].filter(v => v && v !== '—').join(', ') || '—');
+
+  /* ASN + timezone */
+  const asnLabel = i.asn !== '—' && i.utc
+    ? `${i.asn}  ·  ${i.utc}`
+    : (i.asn || '—');
+  setText('val-asn', asnLabel);
+
+  /* Nearest server */
   const cc     = (i.countryCode || '').toUpperCase();
-  const server = nearestServer(cc, region);
-  setText('val-server', server);
+  setText('val-server', nearestServer(cc));
 }
 
-/** Very rough nearest-Google-DC heuristic by country code */
-function nearestServer(cc, region) {
+/** Nearest known Google PoP by country code */
+function nearestServer(cc) {
   const ME  = ['SA','AE','KW','QA','BH','OM','JO','IQ','YE','EG','LB','SY','PS'];
   const EU  = ['DE','FR','GB','NL','PL','ES','IT','SE','NO','DK','FI','CH','AT','BE','CZ','PT'];
   const AS  = ['IN','PK','BD','LK','NP'];
