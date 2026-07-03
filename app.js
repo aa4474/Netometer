@@ -611,65 +611,30 @@ function paintInfoBar() {
     : (i.asn || '—');
   setText('val-asn', asnLabel);
 
-  /* Server Select */
-  const cc = (i.countryCode || '').toUpperCase();
-  initServerSelect(cc);
+  /* Nearest server */
+  const cc     = (i.countryCode || '').toUpperCase();
+  setText('val-server', nearestServer(cc));
 }
 
-/** Initialize the dropdown with 3 servers closest to the region */
-function initServerSelect(cc) {
-  const select = qs('server-select');
-  if (!select) return;
-  
-  /* If already initialized, don't rebuild (preserves user selection) */
-  if (select.options.length > 1) return;
-
+/** Nearest known Google PoP by country code */
+function nearestServer(cc) {
   const ME  = ['SA','AE','KW','QA','BH','OM','JO','IQ','YE','EG','LB','SY','PS'];
   const EU  = ['DE','FR','GB','NL','PL','ES','IT','SE','NO','DK','FI','CH','AT','BE','CZ','PT'];
-  const AS  = ['IN','PK','BD','LK','NP','SG','MY','TH','ID','PH','VN','CN','JP','KR','TW','HK'];
-  
-  let options = [];
-  if (ME.includes(cc)) {
-    options = [
-      { name: 'Cloudflare (Anycast)', url: 'https://cp.cloudflare.com/generate_204' },
-      { name: 'AWS (Bahrain)',        url: 'https://dynamodb.me-south-1.amazonaws.com/ping' },
-      { name: 'AWS (UAE)',            url: 'https://dynamodb.me-central-1.amazonaws.com/ping' }
-    ];
-  } else if (EU.includes(cc)) {
-    options = [
-      { name: 'Cloudflare (Anycast)', url: 'https://cp.cloudflare.com/generate_204' },
-      { name: 'AWS (Frankfurt)',      url: 'https://dynamodb.eu-central-1.amazonaws.com/ping' },
-      { name: 'AWS (London)',         url: 'https://dynamodb.eu-west-2.amazonaws.com/ping' }
-    ];
-  } else if (AS.includes(cc)) {
-    options = [
-      { name: 'Cloudflare (Anycast)', url: 'https://cp.cloudflare.com/generate_204' },
-      { name: 'AWS (Singapore)',      url: 'https://dynamodb.ap-southeast-1.amazonaws.com/ping' },
-      { name: 'AWS (Tokyo)',          url: 'https://dynamodb.ap-northeast-1.amazonaws.com/ping' }
-    ];
-  } else {
-    options = [
-      { name: 'Cloudflare (Anycast)', url: 'https://cp.cloudflare.com/generate_204' },
-      { name: 'Google (Anycast)',     url: 'https://www.google.com/generate_204' },
-      { name: 'AWS (N. Virginia)',    url: 'https://dynamodb.us-east-1.amazonaws.com/ping' }
-    ];
-  }
-
-  select.innerHTML = options.map(o => `<option value="${o.url}">${o.name}</option>`).join('');
-  
-  /* Update PING_URL on change and reset charts */
-  select.addEventListener('change', (e) => {
-    CFG.PING_URL = e.target.value;
-    S.pings = [];
-    S.chart = [];
-    S.failed = 0;
-    S.total = 0;
-    S.jitter = 0;
-    paintPing(0);
-  });
-  
-  /* Set initial to first option */
-  CFG.PING_URL = options[0].url;
+  const AS  = ['IN','PK','BD','LK','NP'];
+  const SEA = ['SG','MY','TH','ID','PH','VN'];
+  const EA  = ['CN','JP','KR','TW','HK'];
+  const AF  = ['ZA','NG','KE','GH','ET'];
+  const NA  = ['US','CA','MX'];
+  const SA  = ['BR','AR','CL','CO','PE'];
+  if (ME.includes(cc))  return 'Google • Doha / Jeddah';
+  if (EU.includes(cc))  return 'Google • Frankfurt / Amsterdam';
+  if (EA.includes(cc))  return 'Google • Tokyo / Singapore';
+  if (SEA.includes(cc)) return 'Google • Singapore';
+  if (AS.includes(cc))  return 'Google • Mumbai';
+  if (AF.includes(cc))  return 'Google • Johannesburg';
+  if (NA.includes(cc))  return 'Google • US-East / US-West';
+  if (SA.includes(cc))  return 'Google • São Paulo';
+  return 'Google / Cloudflare';
 }
 
 function paintConnectionType() {
