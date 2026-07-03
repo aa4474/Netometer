@@ -133,6 +133,19 @@ body {
 .chip-value { font-weight: 500; color: var(--txt); }
 .chip-value.mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
 
+/* Eye toggle button */
+.eye-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--txt-sub); padding: 0; margin-left: 2px;
+  display: flex; align-items: center;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+}
+.eye-btn:hover { color: var(--cyan); }
+.eye-btn svg { width: 12px; height: 12px; display: block; }
+
+#val-ip { letter-spacing: 1px; transition: filter 0.2s; }
+
 /* ── Main ────────────────────────────────────────── */
 .main-content {
   max-width: 1380px; margin: 0 auto;

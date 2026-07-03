@@ -31,7 +31,14 @@
   <div class="info-bar" id="info-bar">
     <div class="info-chip">
       <span class="chip-label">IP</span>
-      <span class="chip-value mono" id="val-ip">—</span>
+      <span class="chip-value mono" id="val-ip">••••••••••</span>
+      <button class="eye-btn" id="ip-eye-btn" aria-label="Show IP address" title="Show IP address">
+        <!-- eye-open icon (default = IP hidden) -->
+        <svg id="eye-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
     </div>
     <div class="info-chip">
       <span class="chip-label">ISP</span>
@@ -42,8 +49,8 @@
       <span class="chip-value" id="val-location">—</span>
     </div>
     <div class="info-chip">
-      <span class="chip-label">Region</span>
-      <span class="chip-value" id="val-region">—</span>
+      <span class="chip-label">ASN</span>
+      <span class="chip-value mono" id="val-asn">—</span>
     </div>
     <div class="info-chip">
       <span class="chip-label">Test Server</span>

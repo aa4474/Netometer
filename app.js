@@ -22,9 +22,14 @@ const CFG = {
 
   PING_URL: 'https://www.google.com/generate_204',
   DL_URL:   'https://speed.cloudflare.com/__down',
-  UL_URL:   'https://speed.cloudflare.com/__up',
+  UL_URLS:  [
+    'https://speed.cloudflare.com/__up',
+    'https://httpbin.org/post',
+    'https://postman-echo.com/post',
+  ],
   DNS_URL:  'https://dns.google/resolve?name=google.com&type=A',
-  IP_URL:   'https://ip-api.com/json?fields=status,country,regionName,city,isp,org,query',
+  IP_URL:   'https://ipwho.is/',
+  IP_FALLBACK: 'https://ip-api.com/json?fields=status,country,regionName,city,isp,org,query',
 
   DL_BYTES: 25 * 1024 * 1024,   // 25 MB
   UL_BYTES:  2 * 1024 * 1024,   //  2 MB
@@ -364,27 +369,56 @@ async function measureDownload() {
 async function measureUpload() {
   setCardTesting('card-upload', true);
   setBadge('ul-status', 'Testing…', 'badge-spin');
-  const body = new Uint8Array(CFG.UL_BYTES);
-  try {
-    const t0 = performance.now();
-    await fetchTO(CFG.UL_URL, {
-      method: 'POST', body: body.buffer,
-      headers: { 'Content-Type': 'application/octet-stream' },
-      cache: 'no-store',
-    }, 35_000);
-    const secs = (performance.now() - t0) / 1_000;
-    const mbps = (CFG.UL_BYTES * 8) / secs / 1e6;
+
+  /* Fill buffer with pseudo-random bytes (avoids compression skewing results) */
+  const size = CFG.UL_BYTES;
+  const data = new Uint8Array(size);
+  try { crypto.getRandomValues(data); } catch { /* IE/old — leave zeroed */ }
+
+  let mbps = 0;
+
+  for (const url of CFG.UL_URLS) {
+    try {
+      mbps = await uploadXHR(url, data);
+      if (mbps > 0) break;          // success — stop trying
+    } catch (err) {
+      console.warn('[upload] failed on', url, err.message);
+    }
+  }
+
+  if (mbps > 0) {
     S.ul.cur  = mbps;
     S.ul.peak = Math.max(S.ul.peak, mbps);
     S.ul.hist.push(mbps);
     S.ulEvents.push({ ts: Date.now(), mbps });
     setBadge('ul-status', 'Done', 'badge-good');
-  } catch {
-    /* fallback: estimate via time-to-abort (upload was still partially sent) */
+  } else {
     setBadge('ul-status', 'Error', 'badge-poor');
-  } finally {
-    setCardTesting('card-upload', false);
   }
+
+  setCardTesting('card-upload', false);
+}
+
+/** XHR-based upload so we get real upload-side timing */
+function uploadXHR(url, data) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.timeout = 32_000;
+
+    const t0 = performance.now();
+
+    xhr.onload = () => {
+      const secs = (performance.now() - t0) / 1_000;
+      if (secs <= 0) return reject(new Error('zero time'));
+      resolve((data.byteLength * 8) / secs / 1e6);
+    };
+    xhr.onerror   = () => reject(new Error('xhr error'));
+    xhr.ontimeout = () => reject(new Error('xhr timeout'));
+
+    xhr.send(data);
+  });
 }
 
 async function measureDNS() {
@@ -397,14 +431,54 @@ async function measureDNS() {
 }
 
 async function fetchUserInfo() {
+  /* ── Primary: ipwho.is (detailed, free, no key) ── */
   try {
     const r    = await fetchTO(CFG.IP_URL, {}, 10_000);
     const data = await r.json();
+    if (data.success !== false && data.ip) {
+      S.info = {
+        query:      data.ip,
+        isp:        data.connection?.isp  || data.connection?.org || '—',
+        org:        data.connection?.org  || '—',
+        asn:        data.connection?.asn  ? 'AS' + data.connection.asn : '—',
+        domain:     data.connection?.domain || '',
+        city:       data.city     || '—',
+        regionName: data.region   || '—',
+        country:    data.country  || '—',
+        countryCode: data.country_code || '',
+        flag:       data.flag?.emoji || '',
+        timezone:   data.timezone?.id  || '—',
+        utc:        data.timezone?.utc || '',
+        lat:        data.latitude,
+        lon:        data.longitude,
+      };
+      paintInfoBar();
+      return;
+    }
+  } catch (e) {
+    console.warn('[ip] ipwho.is failed:', e.message);
+  }
+
+  /* ── Fallback: ip-api.com ── */
+  try {
+    const r    = await fetchTO(CFG.IP_FALLBACK, {}, 10_000);
+    const data = await r.json();
     if (data.status === 'success' || data.query) {
-      S.info = data;
+      S.info = {
+        query:      data.query,
+        isp:        data.isp   || '—',
+        org:        data.org   || '—',
+        asn:        '—',
+        city:       data.city       || '—',
+        regionName: data.regionName || '—',
+        country:    data.country    || '—',
+        flag: '', timezone: '—', utc: '',
+      };
       paintInfoBar();
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn('[ip] ip-api.com also failed:', e.message);
+  }
 }
 
 function pruneOld() {
@@ -441,13 +515,53 @@ function paintStatus() {
   }
 }
 
-/* ── Info bar ──────────────────────────────────── */
+/* ── Info bar ──────────────────────────────────────── */
 function paintInfoBar() {
   if (!S.info) return;
-  setText('val-ip',       S.info.query  || '—');
-  setText('val-isp',      S.info.isp    || '—');
-  setText('val-location', S.info.city   || '—');
-  setText('val-region',   [S.info.regionName, S.info.country].filter(Boolean).join(', ') || '—');
+  const i = S.info;
+
+  /* Store real IP in dataset — display is controlled by eye toggle */
+  const ipEl = qs('val-ip');
+  if (ipEl && i.query) {
+    ipEl.dataset.ip = i.query;
+    /* Only update display if currently hidden (not revealed by user) */
+    if (!ipEl.dataset.revealed) {
+      ipEl.textContent = '••••••••••';
+    } else {
+      ipEl.textContent = i.query;
+    }
+  }
+
+  setText('val-isp',      i.isp || '—');
+  setText('val-location', [i.city, i.country].filter(v => v && v !== '—').join(', ') || '—');
+  setText('val-asn',      i.asn || '—');
+
+  /* Test server label: pick nearest known Google DC based on country code */
+  const region = i.regionName || i.country || '';
+  const cc     = (i.countryCode || '').toUpperCase();
+  const server = nearestServer(cc, region);
+  setText('val-server', server);
+}
+
+/** Very rough nearest-Google-DC heuristic by country code */
+function nearestServer(cc, region) {
+  const ME  = ['SA','AE','KW','QA','BH','OM','JO','IQ','YE','EG','LB','SY','PS'];
+  const EU  = ['DE','FR','GB','NL','PL','ES','IT','SE','NO','DK','FI','CH','AT','BE','CZ','PT'];
+  const AS  = ['IN','PK','BD','LK','NP'];
+  const SEA = ['SG','MY','TH','ID','PH','VN'];
+  const EA  = ['CN','JP','KR','TW','HK'];
+  const AF  = ['ZA','NG','KE','GH','ET'];
+  const NA  = ['US','CA','MX'];
+  const SA  = ['BR','AR','CL','CO','PE'];
+  if (ME.includes(cc))  return 'Google • Doha / Jeddah';
+  if (EU.includes(cc))  return 'Google • Frankfurt / Amsterdam';
+  if (EA.includes(cc))  return 'Google • Tokyo / Singapore';
+  if (SEA.includes(cc)) return 'Google • Singapore';
+  if (AS.includes(cc))  return 'Google • Mumbai';
+  if (AF.includes(cc))  return 'Google • Johannesburg';
+  if (NA.includes(cc))  return 'Google • US-East / US-West';
+  if (SA.includes(cc))  return 'Google • São Paulo';
+  return 'Google / Cloudflare';
 }
 
 function paintConnectionType() {
@@ -616,11 +730,44 @@ window.addEventListener('online',  () => { S.online = true;  paintStatus(); });
 window.addEventListener('offline', () => { S.online = false; paintStatus(); });
 
 /* ═══════════════════════════════════════════════════
+   IP EYE TOGGLE
+═══════════════════════════════════════════════════ */
+const SVG_EYE_OPEN = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const SVG_EYE_OFF  = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+function initIPToggle() {
+  const btn  = qs('ip-eye-btn');
+  const ipEl = qs('val-ip');
+  if (!btn || !ipEl) return;
+
+  btn.addEventListener('click', () => {
+    const revealed = ipEl.dataset.revealed === '1';
+    if (!revealed) {
+      /* Reveal IP */
+      ipEl.textContent      = ipEl.dataset.ip || '—';
+      ipEl.dataset.revealed = '1';
+      btn.innerHTML         = SVG_EYE_OFF;
+      btn.title             = 'Hide IP address';
+      btn.setAttribute('aria-label', 'Hide IP address');
+    } else {
+      /* Mask IP */
+      ipEl.textContent      = '••••••••••';
+      ipEl.dataset.revealed = '0';
+      btn.innerHTML         = SVG_EYE_OPEN;
+      btn.title             = 'Show IP address';
+      btn.setAttribute('aria-label', 'Show IP address');
+    }
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════ */
 function init() {
   initTracks();
   initChart();
+  initIPToggle();
   paintConnectionType();
   fetchUserInfo();
 
