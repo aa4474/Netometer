@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Netometer — Real-time network speed and quality monitor. Track ping, download, upload, jitter, and packet loss continuously.">
+  <meta name="theme-color" content="#060a12">
+  <title>Netometer — Network Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────── -->
+  <header class="header" id="site-header">
+    <div class="header-brand">
+      <div class="brand-icon" aria-hidden="true">◈</div>
+      <h1 class="brand-name">Netometer</h1>
+    </div>
+    <div class="header-status">
+      <div class="status-badge" id="status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-label" id="status-label">Initializing…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Info Bar ────────────────────────────────── -->
+  <div class="info-bar" id="info-bar">
+    <div class="info-chip">
+      <span class="chip-label">IP</span>
+      <span class="chip-value mono" id="val-ip">—</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">ISP</span>
+      <span class="chip-value" id="val-isp">—</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">Location</span>
+      <span class="chip-value" id="val-location">—</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">Region</span>
+      <span class="chip-value" id="val-region">—</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">Test Server</span>
+      <span class="chip-value" id="val-server">Google / Cloudflare</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">Connection</span>
+      <span class="chip-value" id="val-type">—</span>
+    </div>
+    <div class="info-chip">
+      <span class="chip-label">Updated</span>
+      <span class="chip-value mono" id="val-updated">—</span>
+    </div>
+  </div>
+
+  <!-- ── Main Content ────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- ── Gauge Row ─────────────────────────────── -->
+    <section class="gauges-section" aria-label="Speed Gauges">
+
+      <!-- PING -->
+      <div class="gauge-card" id="card-ping">
+        <div class="gauge-header">
+          <span class="gauge-title">PING</span>
+          <span class="gauge-badge" id="ping-badge">—</span>
+        </div>
+        <div class="gauge-body">
+          <svg class="gauge-svg" viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad-ping" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#22c55e"/>
+                <stop offset="48%"  stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#ef4444"/>
+              </linearGradient>
+            </defs>
+            <path class="gauge-track" id="ping-track" d=""/>
+            <path class="gauge-fill"  id="ping-fill"  d="" stroke="url(#grad-ping)"/>
+            <text class="gauge-number"    id="ping-number" x="100" y="95" text-anchor="middle">—</text>
+            <text class="gauge-unit-text"                  x="100" y="113" text-anchor="middle">ms</text>
+          </svg>
+        </div>
+        <div class="gauge-stats">
+          <div class="stat-item"><span class="stat-lbl">Min</span><span class="stat-val" id="ping-min">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Avg</span><span class="stat-val" id="ping-avg">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Max</span><span class="stat-val" id="ping-max">—</span></div>
+        </div>
+      </div>
+
+      <!-- DOWNLOAD -->
+      <div class="gauge-card card-dl" id="card-download">
+        <div class="gauge-header">
+          <span class="gauge-title">⬇ DOWNLOAD</span>
+          <span class="gauge-badge" id="dl-status">Waiting</span>
+        </div>
+        <div class="gauge-body">
+          <svg class="gauge-svg" viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad-dl" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#0ea5e9"/>
+                <stop offset="100%" stop-color="#00e5ff"/>
+              </linearGradient>
+            </defs>
+            <path class="gauge-track"       id="dl-track" d=""/>
+            <path class="gauge-fill dl-glow" id="dl-fill"  d="" stroke="url(#grad-dl)"/>
+            <text class="gauge-number dl-num" id="dl-number" x="100" y="95" text-anchor="middle">—</text>
+            <text class="gauge-unit-text"                    x="100" y="113" text-anchor="middle">Mbps</text>
+          </svg>
+        </div>
+        <div class="gauge-stats">
+          <div class="stat-item"><span class="stat-lbl">Last</span><span class="stat-val" id="dl-last">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Avg</span><span class="stat-val" id="dl-avg">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Peak</span><span class="stat-val" id="dl-peak">—</span></div>
+        </div>
+      </div>
+
+      <!-- UPLOAD -->
+      <div class="gauge-card card-ul" id="card-upload">
+        <div class="gauge-header">
+          <span class="gauge-title">⬆ UPLOAD</span>
+          <span class="gauge-badge" id="ul-status">Waiting</span>
+        </div>
+        <div class="gauge-body">
+          <svg class="gauge-svg" viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad-ul" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#a855f7"/>
+                <stop offset="100%" stop-color="#e040fb"/>
+              </linearGradient>
+            </defs>
+            <path class="gauge-track"       id="ul-track" d=""/>
+            <path class="gauge-fill ul-glow" id="ul-fill"  d="" stroke="url(#grad-ul)"/>
+            <text class="gauge-number ul-num" id="ul-number" x="100" y="95" text-anchor="middle">—</text>
+            <text class="gauge-unit-text"                    x="100" y="113" text-anchor="middle">Mbps</text>
+          </svg>
+        </div>
+        <div class="gauge-stats">
+          <div class="stat-item"><span class="stat-lbl">Last</span><span class="stat-val" id="ul-last">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Avg</span><span class="stat-val" id="ul-avg">—</span></div>
+          <div class="stat-item"><span class="stat-lbl">Peak</span><span class="stat-val" id="ul-peak">—</span></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── Secondary Metrics ──────────────────────── -->
+    <section class="metrics-section" aria-label="Secondary Metrics">
+
+      <div class="metric-card" id="card-jitter">
+        <div class="metric-icon">≈</div>
+        <div class="metric-body">
+          <div class="metric-name">Jitter</div>
+          <div class="metric-val" id="val-jitter">— ms</div>
+          <div class="metric-desc">Ping variation</div>
+        </div>
+        <div class="metric-bar-bg"><div class="metric-bar" id="bar-jitter" style="width:0%"></div></div>
+      </div>
+
+      <div class="metric-card" id="card-loss">
+        <div class="metric-icon">◌</div>
+        <div class="metric-body">
+          <div class="metric-name">Packet Loss</div>
+          <div class="metric-val" id="val-loss">— %</div>
+          <div class="metric-desc">Failed requests</div>
+        </div>
+        <div class="metric-bar-bg"><div class="metric-bar bar-red" id="bar-loss" style="width:0%"></div></div>
+      </div>
+
+      <div class="metric-card" id="card-dns">
+        <div class="metric-icon">⚡</div>
+        <div class="metric-body">
+          <div class="metric-name">DNS Latency</div>
+          <div class="metric-val" id="val-dns">— ms</div>
+          <div class="metric-desc">Resolution time</div>
+        </div>
+        <div class="metric-bar-bg"><div class="metric-bar bar-amber" id="bar-dns" style="width:0%"></div></div>
+      </div>
+
+      <div class="metric-card" id="card-rtt">
+        <div class="metric-icon">↕</div>
+        <div class="metric-body">
+          <div class="metric-name">RTT Range</div>
+          <div class="metric-val" id="val-rtt">— / —</div>
+          <div class="metric-desc">Min / Max (ms)</div>
+        </div>
+      </div>
+
+      <div class="metric-card" id="card-score">
+        <div class="metric-icon">★</div>
+        <div class="metric-body">
+          <div class="metric-name">Quality Score</div>
+          <div class="metric-val quality-val" id="val-score">—</div>
+          <div class="metric-desc" id="desc-score">Waiting for data</div>
+        </div>
+      </div>
+
+      <div class="metric-card" id="card-samples">
+        <div class="metric-icon">⊙</div>
+        <div class="metric-body">
+          <div class="metric-name">Samples</div>
+          <div class="metric-val" id="val-samples">0</div>
+          <div class="metric-desc">Measurements taken</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── Timeline Chart ─────────────────────────── -->
+    <section class="chart-section" aria-label="Connection History">
+      <div class="chart-header">
+        <div class="chart-title-row">
+          <span class="chart-icon" aria-hidden="true">◈</span>
+          <h2 class="chart-title">Real-time Connection History</h2>
+        </div>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-swatch" style="--c:#22c55e"></span>Good &lt;50ms</span>
+          <span class="legend-item"><span class="legend-swatch" style="--c:#f59e0b"></span>Fair 50–150ms</span>
+          <span class="legend-item"><span class="legend-swatch" style="--c:#ef4444"></span>Poor &gt;150ms</span>
+          <span class="legend-item"><span class="legend-swatch" style="--c:#3a1010"></span>Offline</span>
+          <span class="legend-item"><span class="legend-swatch" style="--c:#00e5ff; border-radius:50%"></span>Download test</span>
+          <span class="legend-item"><span class="legend-swatch" style="--c:#e040fb; border-radius:50%"></span>Upload test</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-y-axis" id="chart-y-axis"></div>
+        <div class="chart-canvas-wrap" id="chart-canvas-wrap">
+          <canvas id="timeline-canvas"></canvas>
+        </div>
+      </div>
+      <div class="chart-footer">
+        <span>Last 5 minutes · Sample every 5s</span>
+        <span id="chart-drop-count">No drops detected</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── Footer ──────────────────────────────────── -->
+  <footer class="site-footer">
+    <span class="footer-name">Netometer</span>
+    <span class="footer-sep">·</span>
+    <span>Real-time Network Monitor</span>
+    <span class="footer-sep">·</span>
+    <a class="footer-link" href="https://github.com/aa4474/Netometer" target="_blank" rel="noopener noreferrer">
+      <svg class="gh-icon" viewBox="0 0 24 24" fill="currentColor" aria-label="GitHub">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+      GitHub
+    </a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
